@@ -17,9 +17,9 @@ namespace NuGetDependencyDownloader
         public Func<bool> StopRequested { get; set; }
         public Action<string> Progress { get; set; }
 
-        public void ProcessPackage(string packageId, string packageVersion, bool preRelease)
+        public void ProcessPackage(string packageId, string packageVersion, bool preRelease, string downloadDirectory, IList<string> targetFrameworks)
         {
-            CollectPackages(packageId, packageVersion, preRelease);
+            CollectPackages(packageId, packageVersion, preRelease, targetFrameworks);
 
             if (StopRequested())
             {
@@ -29,7 +29,7 @@ namespace NuGetDependencyDownloader
 
             Progress(string.Format("{0} packages to download.", _packages.Count));
 
-            DownloadPackages();
+            DownloadPackages(downloadDirectory);
 
             if (StopRequested())
             {
@@ -40,7 +40,7 @@ namespace NuGetDependencyDownloader
             Progress("Done.");
         }
 
-        private void CollectPackages(string packageId, string packageVersion, bool preRelease)
+        private void CollectPackages(string packageId, string packageVersion, bool preRelease, IList<string> targetFrameworks)
         {
             IPackage package;
             if (string.IsNullOrWhiteSpace(packageVersion))
@@ -72,16 +72,14 @@ namespace NuGetDependencyDownloader
 
             _packages.Add(package);
             Progress(package.GetFullName());
-            LoadDependencies(package, preRelease);
+            LoadDependencies(package, preRelease, targetFrameworks);
         }
         
-        private void LoadDependencies(IPackage package, bool preRelease)
+        private void LoadDependencies(IPackage package, bool preRelease, IList<string> targetFrameworks)
         {
             if (package.DependencySets != null)
             {
-                var dependencies = package.DependencySets
-                    .SelectMany(o => o.Dependencies.Select(x => new Dependency { Id = x.Id, VersionSpec = x.VersionSpec }))
-                    .ToList();
+                var dependencies = package.DependencySets.Where(d => (d.TargetFramework == null) || targetFrameworks.Contains(d.TargetFramework.Identifier)).SelectMany(o => o.Dependencies.Select(x => new Dependency { Id = x.Id, VersionSpec = x.VersionSpec })).ToList();
 
                 foreach (Dependency dependency in dependencies)
                 {
@@ -95,34 +93,35 @@ namespace NuGetDependencyDownloader
                     if (!IsPackageKnown(depPackage))
                     {
                         _packages.Add(depPackage);
-                        LoadDependencies(depPackage, preRelease);
+                        LoadDependencies(depPackage, preRelease, targetFrameworks);
                     }
                 }
             }
         }
 
-        private void DownloadPackages()
+        private void DownloadPackages(string downloadDirectory)
         {
-            if (!Directory.Exists("download"))
-                Directory.CreateDirectory("download");
+            if (!Directory.Exists(downloadDirectory))
+                Directory.CreateDirectory(downloadDirectory);
 
             foreach (IPackage package in _packages)
             {
                 if (StopRequested())
                     return;
 
-                string fileName = string.Format("{0}.{1}.nupkg", package.Id.ToLower(), package.Version);
-                if (File.Exists("download\\" + fileName))
+                string fileName = Path.Combine(downloadDirectory, string.Format("{0}.{1}.nupkg", package.Id, package.Version));
+
+                if (File.Exists(fileName))
                 {
                     Progress(string.Format("{0} already downloaded.", fileName));
                     continue;
                 }
 
-                Progress(string.Format("downloading {0}", fileName));
+                Progress(string.Format("downloading {0} {1}", package.Id, package.Version));
                 using (var client = new WebClient())
                 {
                     DataServicePackage dsp = (DataServicePackage)package;
-                    client.DownloadFile(dsp.DownloadUrl, "download\\" + fileName);
+                    client.DownloadFile(dsp.DownloadUrl, fileName);
                 }
             }
         }

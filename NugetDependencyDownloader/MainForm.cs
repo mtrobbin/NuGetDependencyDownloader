@@ -2,6 +2,7 @@
 using System.ComponentModel;
 using System.Linq;
 using System.Windows.Forms;
+using System.Collections.Generic;
 
 namespace NuGetDependencyDownloader
 {
@@ -81,7 +82,25 @@ namespace NuGetDependencyDownloader
 
         private void DoWork(object sender, DoWorkEventArgs e)
         {
-            _packageTool.ProcessPackage(textBoxPackage.Text, textBoxVersion.Text, checkBoxPrerelease.Checked);
+            _packageTool.ProcessPackage(textBoxPackage.Text, textBoxVersion.Text, checkBoxPrerelease.Checked, textBoxDownloadDir.Text, GetTargetFrameworkSelectedList());
+        }
+
+        private IList<string> GetTargetFrameworkSelectedList()
+        {
+            List<string> selectedItems = new List<string>();
+
+            if (listBoxTargetFramework.InvokeRequired)
+            {
+                listBoxTargetFramework.Invoke(new MethodInvoker(delegate
+                {
+                    foreach (object obj in listBoxTargetFramework.SelectedItems)
+                    {
+                        selectedItems.Add(obj.ToString());
+                    }
+                }));
+            }
+
+            return selectedItems;
         }
 
         private void ShowActivity(string text)
@@ -95,5 +114,6 @@ namespace NuGetDependencyDownloader
             textBoxActivity.ScrollToCaret();
             textBoxActivity.Refresh();
         }
+
     }
 }
